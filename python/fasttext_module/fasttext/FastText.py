@@ -1,9 +1,8 @@
 # Copyright (c) 2017-present, Facebook, Inc.
 # All rights reserved.
 #
-# This source code is licensed under the BSD-style license found in the
-# LICENSE file in the root directory of this source tree. An additional grant
-# of patent rights can be found in the PATENTS file in the same directory.
+# This source code is licensed under the MIT license found in the
+# LICENSE file in the root directory of this source tree.
 
 from __future__ import absolute_import
 from __future__ import division
@@ -12,6 +11,9 @@ from __future__ import unicode_literals
 
 import fasttext_pybind as fasttext
 import numpy as np
+import multiprocessing
+import sys
+from itertools import chain
 
 loss_name = fasttext.loss_name
 model_name = fasttext.model_name
@@ -20,7 +22,11 @@ BOW = "<"
 EOW = ">"
 
 
-class _FastText():
+def eprint(cls, *args, **kwargs):
+    print(*args, file=sys.stderr, **kwargs)
+
+
+class _FastText(object):
     """
     This class defines the API to inspect models and should not be used to
     create objects. It will be returned by functions such as load_model or
@@ -31,10 +37,20 @@ class _FastText():
     strings are then encoded as UTF-8 and fed to the fastText C++ API.
     """
 
-    def __init__(self, model=None):
+    def __init__(self, model_path=None, args=None):
         self.f = fasttext.fasttext()
-        if model is not None:
-            self.f.loadModel(model)
+        if model_path is not None:
+            self.f.loadModel(model_path)
+        self._words = None
+        self._labels = None
+
+        if args:
+            arg_names = ['lr', 'dim', 'ws', 'epoch', 'minCount',
+                         'minCountLabel', 'minn', 'maxn', 'neg', 'wordNgrams',
+                         'loss', 'bucket', 'thread', 'lrUpdateRate', 't',
+                         'label', 'verbose', 'pretrainedVectors']
+            for arg_name in arg_names:
+                setattr(self, arg_name, getattr(args, arg_name))
 
     def is_quantized(self):
         return self.f.isQuant()
@@ -81,11 +97,11 @@ class _FastText():
         """
         return self.f.getSubwordId(subword)
 
-    def get_subwords(self, word):
+    def get_subwords(self, word, on_unicode_error='strict'):
         """
         Given a word, get the subwords and their indicies.
         """
-        pair = self.f.getSubwords(word)
+        pair = self.f.getSubwords(word, on_unicode_error)
         return pair[0], np.array(pair[1])
 
     def get_input_vector(self, ind):
@@ -97,7 +113,7 @@ class _FastText():
         self.f.getInputVector(b, ind)
         return np.array(b)
 
-    def predict(self, text, k=1, threshold=0.0):
+    def predict(self, text, k=1, threshold=0.0, on_unicode_error='strict'):
         """
         Given a string, get a list of labels and a list of
         corresponding probabilities. k controls the number
@@ -130,12 +146,16 @@ class _FastText():
 
         if type(text) == list:
             text = [check(entry) for entry in text]
-            all_probs, all_labels = self.f.multilinePredict(text, k, threshold)
-            return all_labels, np.array(all_probs, copy=False)
+            predictions = self.f.multilinePredict(text, k, threshold, on_unicode_error)
+            dt = np.dtype([('probability', 'float64'), ('label', 'object')])
+            result_as_pair = np.array(predictions, dtype=dt)
+
+            return result_as_pair['label'].tolist(), result_as_pair['probability']
         else:
             text = check(text)
-            pairs = self.f.predict(text, k, threshold)
-            probs, labels = zip(*pairs)
+            predictions = self.f.predict(text, k, threshold, on_unicode_error)
+            probs, labels = zip(*predictions)
+
             return labels, np.array(probs, copy=False)
 
     def get_input_matrix(self):
@@ -156,20 +176,20 @@ class _FastText():
             raise ValueError("Can't get quantized Matrix")
         return np.array(self.f.getOutputMatrix())
 
-    def get_words(self, include_freq=False):
+    def get_words(self, include_freq=False, on_unicode_error='strict'):
         """
         Get the entire list of words of the dictionary optionally
         including the frequency of the individual words. This
         does not include any subwords. For that please consult
         the function get_subwords.
         """
-        pair = self.f.getVocab()
+        pair = self.f.getVocab(on_unicode_error)
         if include_freq:
             return (pair[0], np.array(pair[1]))
         else:
             return pair[0]
 
-    def get_labels(self, include_freq=False):
+    def get_labels(self, include_freq=False, on_unicode_error='strict'):
         """
         Get the entire list of labels of the dictionary optionally
         including the frequency of the individual labels. Unsupervised
@@ -179,7 +199,7 @@ class _FastText():
         """
         a = self.f.getArgs()
         if a.model == model_name.supervised:
-            pair = self.f.getLabels()
+            pair = self.f.getLabels(on_unicode_error)
             if include_freq:
                 return (pair[0], np.array(pair[1]))
             else:
@@ -187,7 +207,7 @@ class _FastText():
         else:
             return self.get_words(include_freq)
 
-    def get_line(self, text):
+    def get_line(self, text, on_unicode_error='strict'):
         """
         Split a line of text into words and labels. Labels must start with
         the prefix used to create the model (__label__ by default).
@@ -203,10 +223,10 @@ class _FastText():
 
         if type(text) == list:
             text = [check(entry) for entry in text]
-            return self.f.multilineGetLine(text)
+            return self.f.multilineGetLine(text, on_unicode_error)
         else:
             text = check(text)
-            return self.f.getLine(text)
+            return self.f.getLine(text, on_unicode_error)
 
     def save_model(self, path):
         """Save the model to the given path"""
@@ -215,6 +235,17 @@ class _FastText():
     def test(self, path, k=1):
         """Evaluate supervised model using file given by path"""
         return self.f.test(path, k)
+
+    def test_label(self, path, k=1, threshold=0.0):
+        """
+        Return the precision and recall score for each label.
+
+        The returned value is a dictionary, where the key is the label.
+        For example:
+        f.test_label(...)
+        {'__label__italian-cuisine' : {'precision' : 0.7, 'recall' : 0.74}}
+        """
+        return self.f.testLabel(path, k, threshold)
 
     def quantize(
         self,
@@ -251,10 +282,23 @@ class _FastText():
             qnorm
         )
 
+    @property
+    def words(self):
+        if self._words is None:
+            self._words = self.get_words()
+        return self._words
 
-# TODO:
-# Not supported:
-# - pretrained vectors
+    @property
+    def labels(self):
+        if self._labels is None:
+            self._labels = self.get_labels()
+        return self._labels
+
+    def __getitem__(self, word):
+        return self.get_word_vector(word)
+
+    def __contains__(self, word):
+        return word in self.words
 
 
 def _parse_model_string(string):
@@ -275,6 +319,8 @@ def _parse_loss_string(string):
         return loss_name.hs
     if string == "softmax":
         return loss_name.softmax
+    if string == "ova":
+        return loss_name.ova
     else:
         raise ValueError("Unrecognized loss name")
 
@@ -286,7 +332,6 @@ def _build_args(args):
     for (k, v) in args.items():
         setattr(a, k, v)
     a.output = ""  # User should use save_model
-    # a.pretrainedVectors = ""  # Unsupported
     a.saveOutput = 0  # Never use this
     if a.wordNgrams <= 1 and a.maxn == 0:
         a.bucket = 0
@@ -301,30 +346,60 @@ def tokenize(text):
 
 def load_model(path):
     """Load a model given a filepath and return a model object."""
-    return _FastText(path)
+    eprint("Warning : `load_model` does not return WordVectorModel or SupervisedModel any more, but a `FastText` object which is very similar.")
+    return _FastText(model_path=path)
 
 
-def train_supervised(
-    input,
-    lr=0.1,
-    dim=100,
-    ws=5,
-    epoch=5,
-    minCount=1,
-    minCountLabel=0,
-    minn=0,
-    maxn=0,
-    neg=5,
-    wordNgrams=1,
-    loss="softmax",
-    bucket=2000000,
-    thread=12,
-    lrUpdateRate=100,
-    t=1e-4,
-    label="__label__",
-    verbose=2,
-    pretrainedVectors="",
-):
+unsupervised_default = {
+    'model' : "skipgram",
+    'lr' : 0.05,
+    'dim' : 100,
+    'ws' : 5,
+    'epoch' : 5,
+    'minCount' : 5,
+    'minCountLabel' : 0,
+    'minn' : 3,
+    'maxn' : 6,
+    'neg' : 5,
+    'wordNgrams' : 1,
+    'loss' : "ns",
+    'bucket' : 2000000,
+    'thread' : multiprocessing.cpu_count() - 1,
+    'lrUpdateRate' : 100,
+    't' : 1e-4,
+    'label' : "__label__",
+    'verbose' : 2,
+    'pretrainedVectors' : "",
+}
+
+
+def read_args(arg_list, arg_dict, arg_names, default_values):
+    param_map = {
+        'min_count' : 'minCount',
+        'word_ngrams' : 'wordNgrams',
+        'lr_update_rate' : 'lrUpdateRate',
+        'label_prefix' : 'label',
+        'pretrained_vectors' : 'pretrainedVectors'
+    }
+
+    ret = {}
+    for (arg_name, arg_value) in chain(zip(arg_names, arg_list), arg_dict.items()):
+        if arg_name in param_map:
+            arg_name = param_map[arg_name]
+        if arg_name not in arg_names:
+            raise TypeError("unexpected keyword argument '%s'" % arg_name)
+        if arg_name in ret:
+            raise TypeError("multiple values for argument '%s'" % arg_name)
+        ret[arg_name] = arg_value
+
+    for (arg_name, arg_value) in default_values.items():
+        if arg_name not in ret:
+            ret[arg_name] = arg_value
+
+    return ret
+
+
+def train_supervised(*kargs, **kwargs):
     """
     Train a supervised model and return a model object.
 
@@ -337,35 +412,27 @@ def train_supervised(
     example consult the example datasets which are part of the fastText
     repository such as the dataset pulled by classification-example.sh.
     """
-    model = "supervised"
-    a = _build_args(locals())
-    ft = _FastText()
+    supervised_default = unsupervised_default.copy()
+    supervised_default.update({
+        'lr' : 0.1,
+        'minCount' : 1,
+        'minn' : 0,
+        'maxn' : 0,
+        'loss' : "softmax",
+        'model' : "supervised"
+    })
+
+    arg_names = ['input', 'lr', 'dim', 'ws', 'epoch', 'minCount',
+        'minCountLabel', 'minn', 'maxn', 'neg', 'wordNgrams', 'loss', 'bucket',
+        'thread', 'lrUpdateRate', 't', 'label', 'verbose', 'pretrainedVectors']
+    params = read_args(kargs, kwargs, arg_names, supervised_default)
+    a = _build_args(params)
+    ft = _FastText(args=a)
     fasttext.train(ft.f, a)
     return ft
 
 
-def train_unsupervised(
-    input,
-    model="skipgram",
-    lr=0.05,
-    dim=100,
-    ws=5,
-    epoch=5,
-    minCount=5,
-    minCountLabel=0,
-    minn=3,
-    maxn=6,
-    neg=5,
-    wordNgrams=1,
-    loss="ns",
-    bucket=2000000,
-    thread=12,
-    lrUpdateRate=100,
-    t=1e-4,
-    label="__label__",
-    verbose=2,
-    pretrainedVectors="",
-):
+def train_unsupervised(*kargs, **kwargs):
     """
     Train an unsupervised model and return a model object.
 
@@ -379,7 +446,23 @@ def train_unsupervised(
     dataset pulled by the example script word-vector-example.sh, which is
     part of the fastText repository.
     """
-    a = _build_args(locals())
-    ft = _FastText()
+    arg_names = ['input', 'model', 'lr', 'dim', 'ws', 'epoch', 'minCount',
+        'minCountLabel', 'minn', 'maxn', 'neg', 'wordNgrams', 'loss', 'bucket',
+        'thread', 'lrUpdateRate', 't', 'label', 'verbose', 'pretrainedVectors']
+    params = read_args(kargs, kwargs, arg_names, unsupervised_default)
+    a = _build_args(params)
+    ft = _FastText(args=a)
     fasttext.train(ft.f, a)
     return ft
+
+
+def cbow(*kargs, **kwargs):
+    raise Exception("`cbow` is not supported any more. Please use `train_unsupervised` with model=`cbow`. For more information please refer to https://fasttext.cc/blog/2019/06/25/blog-post.html#2-you-were-using-the-unofficial-fasttext-module")
+
+
+def skipgram(*kargs, **kwargs):
+    raise Exception("`skipgram` is not supported any more. Please use `train_unsupervised` with model=`skipgram`. For more information please refer to https://fasttext.cc/blog/2019/06/25/blog-post.html#2-you-were-using-the-unofficial-fasttext-module")
+
+
+def supervised(*kargs, **kwargs):
+    raise Exception("`supervised` is not supported any more. Please use `train_supervised`. For more information please refer to https://fasttext.cc/blog/2019/06/25/blog-post.html#2-you-were-using-the-unofficial-fasttext-module")

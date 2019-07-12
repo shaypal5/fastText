@@ -3,7 +3,7 @@ id: supervised-tutorial
 title: Text classification
 ---
 
-Text classification is a core problem to many applications, like spam detection, sentiment analysis or smart replies. In this tutorial, we describe how to build a text classifier with the fastText tool. 
+Text classification is a core problem to many applications, like spam detection, sentiment analysis or smart replies. In this tutorial, we describe how to build a text classifier with the fastText tool.
 
 ## What is text classification?
 
@@ -18,18 +18,18 @@ The first step of this tutorial is to install and build fastText. It only requir
 Let us start by downloading the [most recent release](https://github.com/facebookresearch/fastText/releases):
 
 ```bash
-$ wget https://github.com/facebookresearch/fastText/archive/v0.1.0.zip
-$ unzip v0.1.0.zip
+$ wget https://github.com/facebookresearch/fastText/archive/v0.9.1.zip
+$ unzip v0.9.1.zip
 ```
 
 Move to the fastText directory and build it:
 
 ```bash
-$ cd fastText-0.1.0
+$ cd fastText-0.9.1
 $ make
 ```
 
-Running the binary without any argument will print the high level documentation, showing the different usecases supported by fastText:
+Running the binary without any argument will print the high level documentation, showing the different use cases supported by fastText:
 
 ```bash
 >> ./fasttext
@@ -58,16 +58,16 @@ In this tutorial, we mainly use the `supervised`, `test` and `predict` subcomman
 As mentioned in the introduction, we need labeled data to train our supervised classifier. In this tutorial, we are interested in building a classifier to automatically recognize the topic of a stackexchange question about cooking. Let's download examples of questions from [the cooking section of Stackexchange](http://cooking.stackexchange.com/), and their associated tags:
 
 ```bash
->> wget https://s3-us-west-1.amazonaws.com/fasttext-vectors/cooking.stackexchange.tar.gz && tar xvzf cooking.stackexchange.tar.gz
+>> wget https://dl.fbaipublicfiles.com/fasttext/data/cooking.stackexchange.tar.gz && tar xvzf cooking.stackexchange.tar.gz
 >> head cooking.stackexchange.txt
 ```
 
-Each line of the text file contains a list of labels, followed by the corresponding document. All the labels start by the `__label__` prefix, which is how fastText recognize what is a label or what is a word.  The model is then trained to predict the labels given the word in the document.
+Each line of the text file contains a list of labels, followed by the corresponding document. All the labels start by the `__label__` prefix, which is how fastText recognize what is a label or what is a word. The model is then trained to predict the labels given the word in the document.
 
 Before training our first classifier, we need to split the data into train and validation. We will use the validation set to evaluate how good the learned classifier is on new data.
 
 ```bash
->> wc cooking.stackexchange.txt 
+>> wc cooking.stackexchange.txt
    15404  169582 1401900 cooking.stackexchange.txt
 ```
 
@@ -87,7 +87,7 @@ We are now ready to train our first classifier:
 Read 0M words
 Number of words:  14598
 Number of labels: 734
-Progress: 100.0%  words/sec/thread: 75109  lr: 0.000000  loss: 5.708354  eta: 0h0m 
+Progress: 100.0%  words/sec/thread: 75109  lr: 0.000000  loss: 5.708354  eta: 0h0m
 ```
 
 The `-input` command line option indicates the file containing the training examples, while the `-output` option indicates where to save the model. At the end of training, a file `model_cooking.bin`, containing the trained classifier, is created in the current directory.
@@ -109,7 +109,7 @@ The predicted tag is `baking`  which fits well to this question. Let us now try 
 The label predicted by the model is `food-safety`, which is not relevant. Somehow, the model seems to fail on simple examples. To get a better sense of its quality, let's test it on the validation data by running:
 
 ```bash
->> ./fasttext test model_cooking.bin cooking.valid                 
+>> ./fasttext test model_cooking.bin cooking.valid
 N  3000
 P@1  0.124
 R@1  0.0541
@@ -119,7 +119,7 @@ Number of examples: 3000
 The output of fastText are the precision at one (`P@1`) and the recall at one (`R@1`). We can also compute the precision at five and recall at five with:
 
 ```bash
->> ./fasttext test model_cooking.bin cooking.valid 5               
+>> ./fasttext test model_cooking.bin cooking.valid 5
 N  3000
 P@5  0.0668
 R@5  0.146
@@ -155,7 +155,7 @@ Looking at the data, we observe that some words contain uppercase letter or punc
 ```bash
 >> cat cooking.stackexchange.txt | sed -e "s/\([.\!?,'/()]\)/ \1 /g" | tr "[:upper:]" "[:lower:]" > cooking.preprocessed.txt
 >> head -n 12404 cooking.preprocessed.txt > cooking.train
->> tail -n 3000 cooking.preprocessed.txt > cooking.valid 
+>> tail -n 3000 cooking.preprocessed.txt > cooking.valid
 ```
 
 Let's train a new model on the pre-processed data:
@@ -165,9 +165,9 @@ Let's train a new model on the pre-processed data:
 Read 0M words
 Number of words:  9012
 Number of labels: 734
-Progress: 100.0%  words/sec/thread: 82041  lr: 0.000000  loss: 5.671649  eta: 0h0m h-14m 
+Progress: 100.0%  words/sec/thread: 82041  lr: 0.000000  loss: 5.671649  eta: 0h0m h-14m
 
->> ./fasttext test model_cooking.bin cooking.valid 
+>> ./fasttext test model_cooking.bin cooking.valid
 N  3000
 P@1  0.164
 R@1  0.0717
@@ -181,7 +181,7 @@ We observe that thanks to the pre-processing, the vocabulary is smaller (from 14
 By default, fastText sees each training example only five times during training, which is pretty small, given that our training set only have 12k training examples. The number of times each examples is seen (also known as the number of epochs), can be increased using the `-epoch` option:
 
 ```bash
->> ./fasttext supervised -input cooking.train -output model_cooking -epoch 25 
+>> ./fasttext supervised -input cooking.train -output model_cooking -epoch 25
 Read 0M words
 Number of words:  9012
 Number of labels: 734
@@ -191,14 +191,14 @@ Progress: 100.0%  words/sec/thread: 77633  lr: 0.000000  loss: 7.147976  eta: 0h
 Let's test the new model:
 
 ```bash
->> ./fasttext test model_cooking.bin cooking.valid                                        
+>> ./fasttext test model_cooking.bin cooking.valid
 N  3000
 P@1  0.501
 R@1  0.218
 Number of examples: 3000
 ```
 
-This is much better! Another way to change the learning speed of our model is to increase (or decrease) the learning rate of the algorithm. This corresponds to how much the model changes after processing each example. A learning rate of 0 would means that the model does not change at all, and thus, does not learn anything. Good values of the learning rate are in the range `0.1 - 1.0`.
+This is much better! Another way to change the learning speed of our model is to increase (or decrease) the learning rate of the algorithm. This corresponds to how much the model changes after processing each example. A learning rate of 0 would mean that the model does not change at all, and thus, does not learn anything. Good values of the learning rate are in the range `0.1 - 1.0`.
 
 ```bash
 >> ./fasttext supervised -input cooking.train -output model_cooking -lr 1.0  
@@ -207,7 +207,7 @@ Number of words:  9012
 Number of labels: 734
 Progress: 100.0%  words/sec/thread: 81469  lr: 0.000000  loss: 6.405640  eta: 0h0m
 
->> ./fasttext test model_cooking.bin cooking.valid                         
+>> ./fasttext test model_cooking.bin cooking.valid
 N  3000
 P@1  0.563
 R@1  0.245
@@ -223,7 +223,7 @@ Number of words:  9012
 Number of labels: 734
 Progress: 100.0%  words/sec/thread: 76394  lr: 0.000000  loss: 4.350277  eta: 0h0m
 
->> ./fasttext test model_cooking.bin cooking.valid                                   
+>> ./fasttext test model_cooking.bin cooking.valid
 N  3000
 P@1  0.585
 R@1  0.255
@@ -241,9 +241,9 @@ Finally, we can improve the performance of a model by using word bigrams, instea
 Read 0M words
 Number of words:  9012
 Number of labels: 734
-Progress: 100.0%  words/sec/thread: 75366  lr: 0.000000  loss: 3.226064  eta: 0h0m 
+Progress: 100.0%  words/sec/thread: 75366  lr: 0.000000  loss: 3.226064  eta: 0h0m
 
->> ./fasttext test model_cooking.bin cooking.valid                                                 
+>> ./fasttext test model_cooking.bin cooking.valid
 N  3000
 P@1  0.599
 R@1  0.261
@@ -259,30 +259,90 @@ With a few steps, we were able to go from a precision at one of 12.4% to 59.9%. 
 
 ## Advanced readers: What is a Bigram?
 
-A 'unigram' refers to a single undividing unit, or token,  usually used as an input to a model. For example a unigram can a word or a letter depending on the model. In fastText, we work at the word level and thus unigrams are words.
+A 'unigram' refers to a single undividing unit, or token,  usually used as an input to a model. For example a unigram can be a word or a letter depending on the model. In fastText, we work at the word level and thus unigrams are words.
 
-Similarly we denote by 'bigram' the concatenation of  2 consecutive tokens or words. Similarly we often talk about n-gram to refer to the concatenation any n consecutive tokens. 
+Similarly we denote by 'bigram' the concatenation of  2 consecutive tokens or words. Similarly we often talk about n-gram to refer to the concatenation any n consecutive tokens.
 
 For example, in the sentence, 'Last donut of the night', the unigrams are  'last', 'donut', 'of', 'the' and 'night'. The bigrams are: 'Last donut', 'donut of', 'of the' and 'the night'.
 
-Bigrams are particularly interesting because, for most sentences, you can reconstruct the order of the words just by looking at a bag of n-grams. 
+Bigrams are particularly interesting because, for most sentences, you can reconstruct the order of the words just by looking at a bag of n-grams.
 
 Let us illustrate this by a simple exercise, given the following bigrams, try to reconstruct the original sentence: 'all out',  'I am', 'of bubblegum', 'out of' and 'am all'.
-It is common to refer to a word as a unigram. 
+It is common to refer to a word as a unigram.
 
 ## Scaling things up
 
-Since we are training our model on a few thousands of examples, the training only takes a few seconds. But training models on larger datasets, with more labels can start to be too slow. A potential solution to make the training faster is to use the hierarchical softmax, instead of the regular softmax [Add a quick explanation of the hierarchical softmax]. This can be done with the option `-loss hs`:
+Since we are training our model on a few thousands of examples, the training only takes a few seconds. But training models on larger datasets, with more labels can start to be too slow. A potential solution to make the training faster is to use the [hierarchical softmax](#advanced-readers-hierarchical-softmax), instead of the regular softmax. This can be done with the option `-loss hs`:
 
 ```bash
 >> ./fasttext supervised -input cooking.train -output model_cooking -lr 1.0 -epoch 25 -wordNgrams 2 -bucket 200000 -dim 50 -loss hs
 Read 0M words
 Number of words:  9012
 Number of labels: 734
-Progress: 100.0%  words/sec/thread: 2199406  lr: 0.000000  loss: 1.718807  eta: 0h0m 
+Progress: 100.0%  words/sec/thread: 2199406  lr: 0.000000  loss: 1.718807  eta: 0h0m
 ```
 
 Training should now take less than a second.
+
+
+## Advanced readers: hierarchical softmax
+
+The hierarchical softmax is a loss function that approximates the softmax with a much faster computation.
+
+The idea is to build a binary tree whose leaves correspond to the labels. Each intermediate node has a binary decision activation (e.g. sigmoid) that is trained, and predicts if we should go to the left or to the right. The probability of the output unit is then given by the product of the probabilities of intermediate nodes along the path from the root to the output unit leave.
+
+For a detailed explanation, you can have a look on [this video](https://www.youtube.com/watch?v=B95LTf2rVWM).
+
+In fastText, we use a Huffman tree, so that the lookup time is faster for more frequent outputs and thus the average lookup time for the output is optimal.
+
+## Multi-label classification
+
+When we want to assign a document to multiple labels, we can still use the softmax loss and play with the parameters for prediction, namely the number of labels to predict and the threshold for the predicted probability. However playing with these arguments can be tricky and unintuitive since the probabilities must sum to 1.
+
+A convenient way to handle multiple labels is to use independent binary classifiers for each label. This can be done with `-loss one-vs-all` or `-loss ova`.
+
+```bash
+>> ./fasttext supervised -input cooking.train -output model_cooking -lr 0.5 -epoch 25 -wordNgrams 2 -bucket 200000 -dim 50 -loss one-vs-all
+Read 0M words
+Number of words:  14543
+Number of labels: 735
+Progress: 100.0% words/sec/thread:   72104 lr:  0.000000 loss:  4.340807 ETA:   0h 0m
+```
+
+It is a good idea to decrease the learning rate compared to other loss functions.
+
+Now let's have a look on our predictions, we want as many prediction as possible (argument `-1`) and we want only labels with probability higher or equal to `0.5` :
+```bash
+>> ./fasttext predict-prob model_cooking.bin - -1 0.5
+```
+and then type the sentence:
+
+*Which baking dish is best to bake a banana bread ?*
+
+we get:
+```
+__label__baking 1.00000 __label__bananas 0.939923 __label__bread 0.592677
+```
+
+We can also evaluate our results with the `test` command :
+
+```bash
+>> ./fasttext test model_cooking.bin cooking.valid -1 0.5
+N 3000
+P@-1  0.702
+R@-1  0.2
+Number of examples: 3000
+```
+
+and play with the threshold to obtain desired precision/recall metrics :
+
+```bash
+>> ./fasttext test model_cooking.bin cooking.valid -1 0.1
+N 3000
+P@-1  0.591
+R@-1  0.272
+Number of examples: 3000
+```
 
 ## Conclusion
 

@@ -1,7 +1,7 @@
 # This is a fork of the original fasttext repository
 # meant to fix a single issue:
 
-pretrained word embeddings were not loaded by the official python package due the the following line in the ``_build_args()`` function was commented out:
+pretrained word embeddings were not loaded by the official python package due to the fact the following line in the ``_build_args()`` function was commented out:
 
 ```# a.pretrainedVectors = ""  # Unsupported```
 
@@ -9,6 +9,8 @@ pretrained word embeddings were not loaded by the official python package due th
 
 ## It was since fixed, so this is unneeded, and not used by skift, the package for sklearn-compatible fasttext-wrappers that relied on it. Good riddance.
 
+|
+|
 
 ## fastText
 [fastText](https://fasttext.cc/) is a library for efficient learning of word representations and sentence classification.

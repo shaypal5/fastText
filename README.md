@@ -1,4 +1,16 @@
-# fastText
+# This is a fork of the original fasttext repository
+# meant to fix a single issue:
+
+pretrained word embeddings were not loaded by the official python package due the the following line in the ``_build_args()`` function was commented out:
+
+```# a.pretrainedVectors = ""  # Unsupported```
+
+(was line 289 at the time)
+
+## It was since fixed, so this is unneeded, and not used by skift, the package for sklearn-compatible fasttext-wrappers that relied on it. Good riddance.
+
+
+## fastText
 [fastText](https://fasttext.cc/) is a library for efficient learning of word representations and sentence classification.
 
 [![CircleCI](https://circleci.com/gh/facebookresearch/fastText/tree/master.svg?style=svg)](https://circleci.com/gh/facebookresearch/fastText/tree/master)
